@@ -72,6 +72,14 @@ def edit_task(task_id: UUID, payload: TaskUpdate, db: Session = Depends(get_db))
     return serialize_task(get_task(db, task_id))
 
 
+@router.delete("/tasks/{task_id}", status_code=204)
+def delete_task(task_id: UUID, db: Session = Depends(get_db)):
+    task = get_task(db, task_id)
+    db.delete(task)
+    db.commit()
+    return Response(status_code=204)
+
+
 @router.patch("/tasks/{task_id}/recurrence", status_code=201)
 def replace_recurrence(task_id: UUID, payload: RecurrenceReplace, db: Session = Depends(get_db)):
     old = get_task(db, task_id)
