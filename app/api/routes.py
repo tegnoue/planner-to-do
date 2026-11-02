@@ -344,10 +344,14 @@ def tracking_today(timezone_name: str = Query(default="UTC", alias="timezone"), 
         tracked = sum(item.focus_seconds for item in sessions)
         remaining = (schedule.remaining_seconds if schedule.remaining_seconds is not None else
                      schedule.planned_minutes * 60 if schedule.planned_minutes is not None else None)
-        items.append({"schedule_id": schedule.id, "task_id": task.id, "title": task.title,
+        items.append({"schedule_id": schedule.id, "task_id": task.id, "parent_task_id": task.parent_task_id,
+                      "title": task.title,
                       "description": task.description, "planned_date": schedule.planned_date,
                       "planned_minutes": schedule.planned_minutes, "remaining_seconds": remaining,
-                      "tracked_seconds": tracked, "notes": schedule.notes})
+                      "tracked_seconds": tracked, "notes": schedule.notes,
+                      "subtasks": [{"id": child.id, "title": child.title, "description": child.description,
+                                    "status": child.status, "priority": child.priority}
+                                   for child in task.subtasks]})
     db.commit()
     session_data = None
     if running:

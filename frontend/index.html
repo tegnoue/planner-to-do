@@ -30,6 +30,7 @@
       <section id="tracking-view" class="hidden"><div class="tracking-layout"><div class="tracking-main"><div id="active-tracking"></div><div class="flex items-center justify-between mt-8 mb-4"><div><h2 class="font-display text-xl font-extrabold">Atividades planejadas para hoje</h2><p class="text-sm text-slate-500 mt-1">Escolha em que vai trabalhar agora.</p></div><button id="refresh-tracking" class="text-sm text-indigo-600">Atualizar ↻</button></div><div id="tracking-activities" class="space-y-3"></div></div><aside class="tracking-settings"><h2 class="font-display text-lg font-extrabold">Configuração do foco</h2><label class="field-label mt-4">Modo<select id="tracking-mode"><option value="pomodoro">Pomodoro</option><option value="stopwatch">Cronômetro livre</option></select></label><div id="pomodoro-settings" class="grid grid-cols-2 gap-3 mt-3"><label class="field-label">Foco (min)<input id="focus-minutes" type="number" min="1" max="180" value="25"></label><label class="field-label">Pausa curta<input id="short-break-minutes" type="number" min="1" max="60" value="5"></label><label class="field-label">Pausa longa<input id="long-break-minutes" type="number" min="1" max="90" value="15"></label><label class="field-label">Ciclos<input id="cycles-before-long" type="number" min="2" max="10" value="4"></label></div><p class="text-xs text-slate-400 mt-4">O tempo de pausa não é descontado do tempo restante da atividade. O Pomodoro alterna foco e pausas automaticamente; você pode pausar e retomar quando quiser.</p></aside></div></section>
     </main>
   </div>
+  <section id="focus-screen" class="focus-screen" hidden aria-label="Modo foco"></section>
   <dialog id="task-dialog" class="modal"><form id="task-form" class="p-6 space-y-4"><div class="flex items-center justify-between"><h2 class="font-display text-xl font-extrabold">Nova tarefa</h2><button type="button" class="close-btn" data-close>×</button></div>
     <label class="field-label">O que você precisa fazer?<input name="title" required maxlength="240" placeholder="Ex.: Revisar capítulo 3"></label>
     <label class="field-label">Detalhes<textarea name="description" rows="2" placeholder="Adicione uma nota (opcional)"></textarea></label>
@@ -55,5 +56,6 @@
     <label class="field-label">Anotações<textarea name="notes" rows="3" placeholder="O que você pretende fazer nesta sessão?"></textarea></label>
     <div id="schedule-error" class="text-sm text-red-600"></div><div class="flex items-center justify-between pt-2"><button id="delete-schedule" type="button" class="danger-text hidden">Excluir planejamento</button><div class="flex justify-end gap-2 ml-auto"><button type="button" class="secondary-btn" data-close>Cancelar</button><button class="primary-btn">Salvar planejamento</button></div></div>
   </form></dialog>
+  <div id="tracker-toast" class="tracker-toast" role="status" aria-live="polite"></div>
   <script src="/static/assets/js/app.js"></script>
 </body></html>
