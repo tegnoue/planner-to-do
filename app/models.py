@@ -48,7 +48,29 @@ class TaskSchedule(Base):
     task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
     planned_date: Mapped[date] = mapped_column(Date)
     planned_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    remaining_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class TrackingSession(Base):
+    __tablename__ = "tracking_sessions"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    schedule_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("task_schedules.id", ondelete="CASCADE"))
+    mode: Mapped[str] = mapped_column(String(20), default="stopwatch")
+    status: Mapped[str] = mapped_column(String(20), default="running")
+    phase: Mapped[str] = mapped_column(String(20), default="focus")
+    phase_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    phase_remaining_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    focus_duration_seconds: Mapped[int] = mapped_column(Integer, default=1500)
+    short_break_seconds: Mapped[int] = mapped_column(Integer, default=300)
+    long_break_seconds: Mapped[int] = mapped_column(Integer, default=900)
+    cycles_before_long_break: Mapped[int] = mapped_column(Integer, default=4)
+    cycles_completed: Mapped[int] = mapped_column(Integer, default=0)
+    focus_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    break_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now)
 
 
 class TaskOccurrence(Base):

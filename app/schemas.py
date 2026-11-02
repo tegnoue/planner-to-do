@@ -96,3 +96,23 @@ class ScheduleCreate(BaseModel):
     planned_date: date
     planned_minutes: int | None = Field(default=None, ge=1)
     notes: str | None = None
+
+
+class ScheduleUpdate(BaseModel):
+    planned_date: date | None = None
+    planned_minutes: int | None = Field(default=None, ge=1)
+    notes: str | None = None
+
+
+class TrackingStart(BaseModel):
+    schedule_id: UUID
+    mode: Literal["stopwatch", "pomodoro"] = "pomodoro"
+    focus_minutes: int = Field(default=25, ge=1, le=180)
+    short_break_minutes: int = Field(default=5, ge=1, le=60)
+    long_break_minutes: int = Field(default=15, ge=1, le=90)
+    cycles_before_long_break: int = Field(default=4, ge=2, le=10)
+
+
+class TrackingAction(BaseModel):
+    action: Literal["pause", "resume", "finish", "add_time", "subtract_time"]
+    minutes: int | None = Field(default=None, ge=1, le=240)

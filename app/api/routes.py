@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -9,8 +9,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
-from app.models import Task, TaskOccurrence, TaskSchedule, Tag
-from app.schemas import (OccurrenceUpdate, RecurrenceReplace, ScheduleCreate, TagCreate,
+from app.models import Task, TaskOccurrence, TaskSchedule, TrackingSession, Tag
+from app.schemas import (OccurrenceUpdate, RecurrenceReplace, ScheduleCreate, ScheduleUpdate, TagCreate,
+                         TrackingAction, TrackingStart,
                          TaskCreate, TaskRead, TaskStatusUpdate, TaskUpdate)
 from app.services import resolve_tags, rule_for, serialize_task, validate_recurrence
 
@@ -170,6 +171,7 @@ def get_calendar(from_: datetime = Query(alias="from"), to: datetime = Query(),
             continue
         scheduled_at = datetime.combine(schedule.planned_date, datetime.min.time(), tzinfo=display_zone)
         output.append({"id": str(schedule.id), "task_id": task.id, "kind": "planned_work", "source": "schedule",
+            "schedule_id": schedule.id, "planned_date": schedule.planned_date, "notes": schedule.notes,
             "recurrence_key": None, "title": task.title, "description": schedule.notes or task.description,
             "status": task.status, "priority": task.priority, "scheduled_at": scheduled_at,
             "due_at": task.due_at, "planned_minutes": schedule.planned_minutes,
@@ -240,3 +242,189 @@ def schedule_task(task_id: UUID, payload: ScheduleCreate, db: Session = Depends(
     db.refresh(item)
     return {"id": item.id, "task_id": item.task_id, "planned_date": item.planned_date,
             "planned_minutes": item.planned_minutes, "notes": item.notes}
+
+
+@router.patch("/tasks/{task_id}/schedule/{schedule_id}")
+def update_schedule(task_id: UUID, schedule_id: UUID, payload: ScheduleUpdate, db: Session = Depends(get_db)):
+    get_task(db, task_id)
+    item = db.scalar(select(TaskSchedule).where(TaskSchedule.id == schedule_id, TaskSchedule.task_id == task_id))
+    if item is None:
+        raise HTTPException(404, "Planejamento não encontrado para esta tarefa")
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(422, "Informe ao menos um campo para alterar")
+    for field, value in changes.items():
+        setattr(item, field, value)
+    db.commit()
+    db.refresh(item)
+    return {"id": item.id, "task_id": item.task_id, "planned_date": item.planned_date,
+            "planned_minutes": item.planned_minutes, "notes": item.notes}
+
+
+@router.delete("/tasks/{task_id}/schedule/{schedule_id}", status_code=204)
+def delete_schedule(task_id: UUID, schedule_id: UUID, db: Session = Depends(get_db)):
+    get_task(db, task_id)
+    item = db.scalar(select(TaskSchedule).where(TaskSchedule.id == schedule_id, TaskSchedule.task_id == task_id))
+    if item is None:
+        raise HTTPException(404, "Planejamento não encontrado para esta tarefa")
+    db.delete(item)
+    db.commit()
+    return Response(status_code=204)
+
+
+def _checkpoint(session: TrackingSession, schedule: TaskSchedule, now: datetime):
+    if session.status != "running" or session.phase_started_at is None:
+        return
+    elapsed = max(0, int((now - session.phase_started_at).total_seconds()))
+    if elapsed == 0:
+        return
+    if session.mode == "stopwatch":
+        session.focus_seconds += elapsed
+        schedule.remaining_seconds = max(0, (schedule.remaining_seconds or 0) - elapsed)
+        session.phase_started_at = now
+        return
+
+    while elapsed > 0:
+        consumed = min(elapsed, max(0, session.phase_remaining_seconds))
+        if session.phase == "focus":
+            session.focus_seconds += consumed
+            schedule.remaining_seconds = max(0, (schedule.remaining_seconds or 0) - consumed)
+        else:
+            session.break_seconds += consumed
+        session.phase_remaining_seconds -= consumed
+        elapsed -= consumed
+        if session.phase_remaining_seconds <= 0:
+            if session.phase == "focus":
+                session.cycles_completed += 1
+                session.phase = ("long_break" if session.cycles_completed % session.cycles_before_long_break == 0
+                                 else "short_break")
+                session.phase_remaining_seconds = (session.long_break_seconds if session.phase == "long_break"
+                                                   else session.short_break_seconds)
+            else:
+                session.phase = "focus"
+                session.phase_remaining_seconds = session.focus_duration_seconds
+        if elapsed == 0:
+            session.phase_started_at = now
+
+
+def _active_session(db: Session):
+    return db.scalar(select(TrackingSession).where(TrackingSession.status.in_(["running", "paused"]))
+                     .order_by(TrackingSession.status.desc(), TrackingSession.created_at.desc()))
+
+
+def _session_payload(session: TrackingSession, schedule: TaskSchedule, db: Session):
+    task = db.get(Task, schedule.task_id)
+    return {"id": session.id, "schedule_id": schedule.id, "task_id": task.id,
+            "task_title": task.title, "mode": session.mode, "status": session.status,
+            "phase": session.phase, "phase_started_at": session.phase_started_at,
+            "phase_remaining_seconds": session.phase_remaining_seconds,
+            "focus_seconds": session.focus_seconds, "break_seconds": session.break_seconds,
+            "cycles_completed": session.cycles_completed,
+            "focus_duration_seconds": session.focus_duration_seconds,
+            "short_break_seconds": session.short_break_seconds, "long_break_seconds": session.long_break_seconds,
+            "remaining_seconds": schedule.remaining_seconds, "ended_at": session.ended_at}
+
+
+@router.get("/tracking/today")
+def tracking_today(timezone_name: str = Query(default="UTC", alias="timezone"), db: Session = Depends(get_db)):
+    try:
+        today = datetime.now(ZoneInfo(timezone_name)).date()
+    except Exception as exc:
+        raise HTTPException(422, "Fuso horário inválido") from exc
+    schedules = db.scalars(select(TaskSchedule).where(TaskSchedule.planned_date == today)
+                           .order_by(TaskSchedule.id)).all()
+    running = _active_session(db)
+    now = datetime.now(timezone.utc)
+    if running:
+        _checkpoint(running, db.get(TaskSchedule, running.schedule_id), now)
+    items = []
+    for schedule in schedules:
+        task = db.get(Task, schedule.task_id)
+        sessions = db.scalars(select(TrackingSession).where(TrackingSession.schedule_id == schedule.id)).all()
+        tracked = sum(item.focus_seconds for item in sessions)
+        remaining = (schedule.remaining_seconds if schedule.remaining_seconds is not None else
+                     schedule.planned_minutes * 60 if schedule.planned_minutes is not None else None)
+        items.append({"schedule_id": schedule.id, "task_id": task.id, "title": task.title,
+                      "description": task.description, "planned_date": schedule.planned_date,
+                      "planned_minutes": schedule.planned_minutes, "remaining_seconds": remaining,
+                      "tracked_seconds": tracked, "notes": schedule.notes})
+    db.commit()
+    session_data = None
+    if running:
+        schedule = db.get(TaskSchedule, running.schedule_id)
+        session_data = _session_payload(running, schedule, db)
+    return {"date": today, "items": items, "active_session": session_data}
+
+
+@router.post("/tracking/sessions", status_code=201)
+def start_tracking(payload: TrackingStart, db: Session = Depends(get_db)):
+    schedule = db.get(TaskSchedule, payload.schedule_id)
+    if schedule is None:
+        raise HTTPException(404, "Planejamento não encontrado")
+    now = datetime.now(timezone.utc)
+    current = db.scalar(select(TrackingSession).where(TrackingSession.status == "running"))
+    if current:
+        current_schedule = db.get(TaskSchedule, current.schedule_id)
+        _checkpoint(current, current_schedule, now)
+        current.status = "paused"
+        current.phase_started_at = None
+    if schedule.remaining_seconds is None:
+        schedule.remaining_seconds = (schedule.planned_minutes * 60 if schedule.planned_minutes is not None
+                                      else payload.focus_minutes * 60 if payload.mode == "pomodoro" else 60 * 60)
+    session = TrackingSession(schedule_id=schedule.id, mode=payload.mode, status="running", phase="focus",
+        phase_started_at=now, phase_remaining_seconds=payload.focus_minutes * 60,
+        focus_duration_seconds=payload.focus_minutes * 60, short_break_seconds=payload.short_break_minutes * 60,
+        long_break_seconds=payload.long_break_minutes * 60,
+        cycles_before_long_break=payload.cycles_before_long_break, started_at=now)
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return _session_payload(session, schedule, db)
+
+
+@router.get("/tracking/sessions/active")
+def get_active_tracking(db: Session = Depends(get_db)):
+    session = _active_session(db)
+    if session is None:
+        return None
+    schedule = db.get(TaskSchedule, session.schedule_id)
+    _checkpoint(session, schedule, datetime.now(timezone.utc))
+    db.commit()
+    return _session_payload(session, schedule, db)
+
+
+@router.patch("/tracking/sessions/{session_id}")
+def update_tracking(session_id: UUID, payload: TrackingAction, db: Session = Depends(get_db)):
+    session = db.get(TrackingSession, session_id)
+    if session is None or session.status == "completed":
+        raise HTTPException(404, "Sessão ativa não encontrada")
+    schedule = db.get(TaskSchedule, session.schedule_id)
+    now = datetime.now(timezone.utc)
+    _checkpoint(session, schedule, now)
+    if payload.action == "pause":
+        if session.status != "running":
+            raise HTTPException(409, "A sessão já está pausada")
+        session.status = "paused"
+        session.phase_started_at = None
+    elif payload.action == "resume":
+        if session.status != "paused":
+            raise HTTPException(409, "A sessão não está pausada")
+        other = db.scalar(select(TrackingSession).where(TrackingSession.status == "running", TrackingSession.id != session.id))
+        if other:
+            _checkpoint(other, db.get(TaskSchedule, other.schedule_id), now)
+            other.status = "paused"
+            other.phase_started_at = None
+        session.status = "running"
+        session.phase_started_at = now
+    elif payload.action == "finish":
+        session.status = "completed"
+        session.ended_at = now
+        session.phase_started_at = None
+    elif payload.action in ("add_time", "subtract_time"):
+        if payload.minutes is None:
+            raise HTTPException(422, "Informe a quantidade de minutos")
+        delta = payload.minutes * 60 * (1 if payload.action == "add_time" else -1)
+        schedule.remaining_seconds = max(0, (schedule.remaining_seconds or 0) + delta)
+    db.commit()
+    db.refresh(session)
+    return _session_payload(session, schedule, db)
