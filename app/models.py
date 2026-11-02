@@ -59,6 +59,7 @@ class TaskOccurrence(Base):
     recurrence_key: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     due_at_override: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status_override: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    priority_override: Mapped[str | None] = mapped_column(String(20), nullable=True)
     description_override: Mapped[str | None] = mapped_column(Text, nullable=True)
     title_override: Mapped[str | None] = mapped_column(String(240), nullable=True)
     is_cancelled: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -74,6 +74,7 @@ class RecurrenceReplace(BaseModel):
 
 class OccurrenceUpdate(BaseModel):
     status: Status | None = None
+    priority: Priority | None = None
     due_at: datetime | None = None
     description: str | None = None
     title: str | None = None

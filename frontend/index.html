@@ -22,7 +22,7 @@
     <main class="p-5 md:p-9 max-w-[1500px] w-full mx-auto">
       <header class="flex flex-wrap items-center justify-between gap-4 mb-8">
         <div><div class="text-sm text-slate-400" id="today-label"></div><h1 class="font-display text-3xl md:text-4xl font-extrabold mt-1" id="page-title">Meu quadro</h1></div>
-        <button id="open-create" class="primary-btn">＋ <span>Nova tarefa</span></button>
+        <div class="flex items-center gap-2"><button id="theme-toggle" class="theme-toggle" type="button" aria-label="Ativar modo escuro"><span id="theme-icon">☾</span><span id="theme-label">Modo escuro</span></button><button id="open-create" class="primary-btn">＋ <span>Nova tarefa</span></button></div>
       </header>
       <section id="board-view"><div class="flex items-center justify-between mb-5"><p class="text-sm text-slate-500">Transforme seus planos em progresso.</p><button id="refresh" class="text-sm text-indigo-600">Atualizar ↻</button></div><div id="board" class="grid md:grid-cols-3 gap-5"></div></section>
       <section id="calendar-view" class="hidden"><div class="flex flex-wrap items-center gap-3 mb-5"><button id="prev-week" class="icon-btn" aria-label="Período anterior">←</button><button id="next-week" class="icon-btn" aria-label="Próximo período">→</button><h2 id="week-label" class="font-bold ml-2"></h2><button id="this-week" class="text-sm text-indigo-600">Hoje</button><div class="calendar-modes" role="group" aria-label="Exibição do calendário"><button data-calendar-mode="year">Ano</button><button data-calendar-mode="month">Mês</button><button data-calendar-mode="week" class="selected">Semana</button><button data-calendar-mode="day">Dia</button></div></div><div id="calendar"></div></section>

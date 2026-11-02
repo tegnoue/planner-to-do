@@ -151,7 +151,8 @@ def get_calendar(from_: datetime = Query(alias="from"), to: datetime = Query(),
                     "title": (override.title_override if override and override.title_override else task.title),
                     "description": (override.description_override if override and override.description_override is not None else task.description),
                     "status": override.status_override if override and override.status_override else task.status,
-                    "priority": task.priority, "scheduled_at": scheduled, "due_at": scheduled if override and override.due_at_override else None,
+                    "priority": override.priority_override if override and override.priority_override else task.priority,
+                    "scheduled_at": scheduled, "due_at": scheduled if override and override.due_at_override else None,
                     "tag_ids": [tag.id for tag in task.tags]})
         elif task.due_at and from_ <= task.due_at < to:
             output.append({"id": str(task.id), "task_id": task.id, "kind": "single", "source": "task",
@@ -199,7 +200,7 @@ def update_occurrence(task_id: UUID, recurrence_key: datetime, payload: Occurren
         occurrence = TaskOccurrence(task_id=task.id, recurrence_key=key)
         db.add(occurrence)
     changes = payload.model_dump(exclude_unset=True)
-    mapping = {"status": "status_override", "due_at": "due_at_override", "description": "description_override",
+    mapping = {"status": "status_override", "priority": "priority_override", "due_at": "due_at_override", "description": "description_override",
                "title": "title_override", "is_cancelled": "is_cancelled"}
     for field, value in changes.items():
         setattr(occurrence, mapping[field], value)
@@ -207,7 +208,7 @@ def update_occurrence(task_id: UUID, recurrence_key: datetime, payload: Occurren
         occurrence.completed_at = datetime.now(timezone.utc)
     db.commit()
     return {"id": occurrence.id, "task_id": occurrence.task_id, "recurrence_key": occurrence.recurrence_key,
-            "status": occurrence.status_override, "due_at": occurrence.due_at_override,
+            "status": occurrence.status_override, "priority": occurrence.priority_override, "due_at": occurrence.due_at_override,
             "description": occurrence.description_override, "title": occurrence.title_override,
             "is_cancelled": occurrence.is_cancelled}
 
